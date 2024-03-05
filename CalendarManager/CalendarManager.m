@@ -79,23 +79,34 @@ RCT_EXPORT_METHOD(addEvent:(NSDictionary *)details callback:(RCTResponseSenderBl
 - (void)initEventStoreWithCalendarCapabilities:(NSDictionary *)details callback:(RCTResponseSenderBlock)callback
 {
     EKEventStore *localEventStore = [[EKEventStore alloc] init];
-    [localEventStore requestAccessToEntityType:EKEntityTypeEvent completion:^(BOOL granted, NSError *error)
-     {
-        if (error) {
-            return callback(@[@{@"type":@"permission", @"message": error.localizedDescription}]);
-        }
 
-        if (granted) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                self.eventStore = localEventStore;
-                [self addEvent:details callback:callback];
-            });
-        } else {
-            NSString *errorMessage = @"User denied calendar access";
-            callback(@[@{@"type":@"permission", @"message":errorMessage}]);
-            NSLog(@"%@", errorMessage);
-        }
-     }];
+    if (@available(iOS 17, *)) {
+        [localEventStore requestWriteOnlyAccessToEventsWithCompletion:^(BOOL granted, NSError *error) {
+            [self handleEventStoreAccessWithGranted:granted error:error localEventStore:localEventStore details:details callback:callback];
+        }];
+    } else {
+        [localEventStore requestAccessToEntityType:EKEntityTypeEvent completion:^(BOOL granted, NSError *error) {
+            [self handleEventStoreAccessWithGranted:granted error:error localEventStore:localEventStore details:details callback:callback];
+        }];
+    }
+}
+
+- (void)handleEventStoreAccessWithGranted:(BOOL)granted error:(NSError *)error localEventStore:(EKEventStore *)localEventStore details:(NSDictionary *)details callback:(RCTResponseSenderBlock)callback
+{
+    if (error) {
+        return callback(@[@{@"type":@"permission", @"message": error.localizedDescription}]);
+    }
+
+    if (granted) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.eventStore = localEventStore;
+            [self addEvent:details callback:callback];
+        });
+    } else {
+        NSString *errorMessage = @"User denied calendar access";
+        callback(@[@{@"type":@"permission", @"message":errorMessage}]);
+        NSLog(@"%@", errorMessage);
+    }
 }
 
 @end
